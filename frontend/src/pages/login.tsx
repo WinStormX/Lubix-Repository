@@ -4,6 +4,7 @@ import api from "../api/axios";
 import axios from "axios";
 import type { LoginRequest, LoginResponse } from "../types/auts";
 import { useAuth } from "../context/AuthContext";
+import { errorDetailMessage } from "../utils/errors";
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -72,7 +73,7 @@ const Login: React.FC = () => {
 
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {
-        showMessage(error.response?.data?.detail || "Error de login", "error");
+        showMessage(errorDetailMessage(error, "Error de login"), "error");
       }
     } finally {
       setLoading(false);

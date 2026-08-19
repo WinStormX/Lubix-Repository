@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import axios from "axios";
+import { errorDetailMessage } from "../utils/errors";
 
 const RecoverPassword: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -42,7 +43,7 @@ const RecoverPassword: React.FC = () => {
 
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
-        showMessage(err.response?.data?.detail || "Error enviando el correo", "error");
+        showMessage(errorDetailMessage(err, "Error enviando el correo"), "error");
       } else {
         showMessage("Error de conexión", "error");
       }

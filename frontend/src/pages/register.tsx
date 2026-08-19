@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import axios from "axios";
+import { errorDetailMessage } from "../utils/errors";
 
 type RegistrationMode = "usuario" | "empresa";
 
@@ -144,7 +145,10 @@ export const Register = () => {
         } catch (error) {
             if (axios.isAxiosError(error)) {
                 showPopup(
-                    error.response?.data?.detail || (mode === "empresa" ? "No se pudo registrar la empresa" : "Error al registrar"),
+                    errorDetailMessage(
+                        error,
+                        mode === "empresa" ? "No se pudo registrar la empresa" : "Error al registrar"
+                    ),
                     "error"
                 );
             } else {

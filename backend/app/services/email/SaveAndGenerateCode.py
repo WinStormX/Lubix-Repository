@@ -33,6 +33,8 @@ def create_code_and_send_code(database: Session, user_id: uuid.UUID, email: str,
     database.add(new_code)
     database.commit()
     database.refresh(new_code)
+
+    print(f"[LUBIX-DEBUG] Código de verificación generado para {email} ({code_type}): {code}")
     
     if code_type == typeCode.resetPassword:
         EmailForgotPassword(email, code, code_type)

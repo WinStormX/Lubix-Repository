@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import axios from "axios";
 import type { VerifyEmailRequest, VerifyEmailResponse } from "../types/auts";
+import { errorDetailMessage } from "../utils/errors";
 
 const VerificationCode: React.FC = () => {
   const [code, setCode] = useState(Array(6).fill(""));
@@ -79,7 +80,7 @@ const VerificationCode: React.FC = () => {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         showMessage(
-          error.response?.data?.detail || "Error al reenviar",
+          errorDetailMessage(error, "Error al reenviar"),
           "error"
         );
       } else {

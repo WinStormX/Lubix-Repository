@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import NavbarUsuario from "../components/navbaruser";
 import Footer from "../components/footer";
 import { TrashIcon, ShoppingBagIcon } from "@heroicons/react/24/outline";
@@ -14,6 +14,7 @@ interface CartItem {
 
 const CartPage = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const saved = localStorage.getItem("cart");
@@ -104,7 +105,10 @@ const CartPage = () => {
               <p className="text-xl font-bold" style={{ color: "var(--color-text)" }}>
                 Total: <span className="text-green-500">${total.toLocaleString("es-CO")}</span>
               </p>
-              <button className="mt-3 bg-green-500 hover:bg-green-400 text-white px-8 py-3 rounded-xl font-semibold transition">
+              <button
+                onClick={() => navigate("/pago")}
+                className="mt-3 bg-green-500 hover:bg-green-400 text-white px-8 py-3 rounded-xl font-semibold transition"
+              >
                 Proceder al pago
               </button>
             </div>

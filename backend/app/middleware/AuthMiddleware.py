@@ -17,6 +17,8 @@ PUBLIC_ROUTES = [
     "/auth/reset-password-user",
     "/auth/refresh",
     "/auth/logout",
+    "/health/database",
+    "/health/internet",
     "/docs",
     "/openapi.json"
 ]
@@ -31,7 +33,8 @@ ROLES_PERMISSIONS_ROUTERS = {
     "company": [
         "/company/dashboard/me",
         "/company/dashboard/my-profile",
-        "/company/dashboard/upgrade-my-profile"
+        "/company/dashboard/upgrade-my-profile",
+        "/company/products"
     ],
 
     "user": [

@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Lubix",
+    "slug": "lubix-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#16a34a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lubix.company"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#16a34a"
+      },
+      "package": "com.lubix.company"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
