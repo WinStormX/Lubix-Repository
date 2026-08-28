@@ -5,10 +5,12 @@ import axios from "axios";
 import type { LoginRequest, LoginResponse } from "../types/auts";
 import { useAuth } from "../context/AuthContext";
 import { errorDetailMessage } from "../utils/errors";
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [userType, setUserType] = useState<"user" | "company">("user");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -143,14 +145,28 @@ const Login: React.FC = () => {
 
             <div className="mb-4 sm:mb-5">
               <label className="label-base">Contraseña</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-base"
-                placeholder="••••••••"
-                disabled={loading}
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input-base pr-10"
+                  placeholder="••••••••"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeSlashIcon className="w-5 h-5" />
+                  ) : (
+                    <EyeIcon className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <button type="submit" disabled={loading} className="btn-primary">

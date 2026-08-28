@@ -20,13 +20,14 @@ import {
   PhoneIcon,
   CalendarIcon,
   ShieldCheckIcon,    
-  ChartBarIcon        
+  ChartBarIcon,
+  ShoppingBagIcon        
 } from "@heroicons/react/24/outline";
 
-type Tab = 'products' | 'profile' | 'stats';
+type Tab = 'products' | 'orders' | 'profile' | 'stats';
 
 interface Product {
-  id: number;
+  id: string;
   name: string;
   price: number;
   image: string;
@@ -36,6 +37,35 @@ interface Product {
   stock: number;
   active: boolean;
   category: string;
+}
+
+interface CompanyOrderItem {
+  id: string;
+  product_id: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+interface CompanyOrder {
+  id: string;
+  status: string;
+  subtotal: number;
+  discount: number;
+  shipping: number;
+  total: number;
+  payment_method: string;
+  recipient: string;
+  address: string;
+  city: string;
+  department: string;
+  postal_code: string;
+  created_at: string;
+  estimated_delivery: string;
+  delivery_progress: number;
+  buyer_email: string;
+  buyer_name: string;
+  items: CompanyOrderItem[];
 }
 
 interface ProductForm {
@@ -61,6 +91,8 @@ interface SellerInfo {
   totalSales: number;
   totalReviews: number;
   avatar: string;
+  sellerLevel: string;
+  levelProgress: number;
 }
 
 const INITIAL_PRODUCTS: Product[] = [];
@@ -90,6 +122,8 @@ const INITIAL_SELLER_INFO: SellerInfo = {
   totalSales: 0,
   totalReviews: 0,
   avatar: '',
+  sellerLevel: 'Bronze',
+  levelProgress: 0,
 };
 
 export default function SellerDashboard() {
@@ -100,8 +134,10 @@ export default function SellerDashboard() {
   const [loading, setLoading] = useState(true);
   
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [companyOrders, setCompanyOrders] = useState<CompanyOrder[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM);
   const [imagePreview, setImagePreview] = useState('');
@@ -118,23 +154,49 @@ export default function SellerDashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [meRes, profileRes] = await Promise.all([
+      const [meRes, profileRes, productsRes, ordersRes] = await Promise.all([
         api.get("/company/dashboard/me"),
-        api.get("/company/dashboard/my-profile")
+        api.get("/company/dashboard/my-profile"),
+        api.get("/company/products"),
+        api.get("/company/orders"),
       ]);
 
       const me = meRes.data;
       const profile = profileRes.data;
 
+      const totalSales = me.sales || profile.completeSales || 0;
+      const avgRating = me.stars || profile.averageRating || 0;
+
+      let sellerLevel = 'Bronze';
+      let levelProgress = 0;
+      if (totalSales >= 500) {
+        sellerLevel = 'Diamond';
+        levelProgress = 100;
+      } else if (totalSales >= 200) {
+        sellerLevel = 'Platinum';
+        levelProgress = Math.min(100, Math.round(((totalSales - 200) / 300) * 100));
+      } else if (totalSales >= 50) {
+        sellerLevel = 'Gold';
+        levelProgress = Math.min(100, Math.round(((totalSales - 50) / 150) * 100));
+      } else if (totalSales >= 10) {
+        sellerLevel = 'Silver';
+        levelProgress = Math.min(100, Math.round(((totalSales - 10) / 40) * 100));
+      } else {
+        sellerLevel = 'Bronze';
+        levelProgress = Math.min(100, Math.round((totalSales / 10) * 100));
+      }
+
       setSellerInfo({
         name: me.nameCompany || profile.nameCompany || user?.name || "",
-        email: me.addressCompany || profile.emailCompany || "",
-        phone: profile.tellCompany || user?.email || "",
+        email: me.emailCompany || profile.emailCompany || "",
+        phone: me.tellCompany || profile.tellCompany || "",
         memberSince: me.memberAT ? new Date(me.memberAT).toLocaleDateString() : "",
-        rating: me.stars || profile.averageRating || 0,
-        totalSales: me.sales || profile.completeSales || 0,
+        rating: avgRating,
+        totalSales: totalSales,
         totalReviews: me.reviews || profile.totalReviews || 0,
         avatar: (me.nameCompany || "V").charAt(0).toUpperCase(),
+        sellerLevel,
+        levelProgress,
       });
 
       setProfileForm({
@@ -142,6 +204,22 @@ export default function SellerDashboard() {
         email: profile.emailCompany || "",
         phone: profile.tellCompany || "",
       });
+
+      const apiProducts = (productsRes.data || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        image: p.images?.[0] || REFERENCE_IMAGE,
+        sold: 0,
+        views: 0,
+        rating: 0,
+        stock: p.stock,
+        active: p.status !== "inactive",
+        category: p.catalog_name || "General",
+      }));
+      setProducts(apiProducts);
+
+      setCompanyOrders(ordersRes.data || []);
     } catch (err) {
       console.error("Error fetching dashboard data:", err);
     } finally {
@@ -152,15 +230,84 @@ export default function SellerDashboard() {
   const totalRevenue = products.reduce((acc, p) => acc + p.price * p.sold, 0);
   const activeProducts = products.filter((p) => p.active);
 
-  const toggleActive = (id: number) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, active: !p.active } : p))
-    );
+  const toggleActive = async (id: string) => {
+    try {
+      await api.patch(`/company/products/${id}/status`);
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error toggling product status:", err);
+    }
   };
 
-  const deleteProduct = (id: number) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    setShowDeleteConfirm(null);
+  const deleteProduct = async (id: string) => {
+    try {
+      await api.delete(`/company/products/${id}`);
+      setShowDeleteConfirm(null);
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error deleting product:", err);
+    }
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      await api.patch("/company/dashboard/upload-logo", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error uploading logo:", err);
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      await api.patch("/company/dashboard/upload-banner", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error uploading banner:", err);
+    }
+  };
+
+  const handleOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      await api.patch(`/company/orders/${orderId}/status`, { status: newStatus });
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error updating order status:", err);
+    }
+  };
+
+  const orderStatusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      pending: "Pendiente",
+      confirmed: "Confirmado",
+      shipped: "Enviado",
+      delivered: "Entregado",
+      cancelled: "Cancelado",
+    };
+    return map[status] || status;
+  };
+
+  const orderStatusColor = (status: string) => {
+    const map: Record<string, string> = {
+      pending: "bg-yellow-500/20 border-yellow-500/40 text-yellow-300",
+      confirmed: "bg-blue-500/20 border-blue-500/40 text-blue-300",
+      shipped: "bg-purple-500/20 border-purple-500/40 text-purple-300",
+      delivered: "bg-green-500/20 border-green-500/40 text-green-300",
+      cancelled: "bg-red-500/20 border-red-500/40 text-red-300",
+    };
+    return map[status] || "bg-gray-500/20 border-gray-500/40 text-gray-300";
   };
 
   const handleFormChange = (field: keyof ProductForm, value: string) => {
@@ -168,24 +315,30 @@ export default function SellerDashboard() {
     if (field === 'imageUrl') setImagePreview(value);
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
     if (!form.name || !form.price || !form.stock) return;
-    const newProduct: Product = {
-      id: Date.now(),
-      name: form.name,
-      price: parseInt(form.price.replace(/\D/g, '')) || 0,
-      image: form.imageUrl || REFERENCE_IMAGE,
-      sold: 0,
-      views: 0,
-      rating: 0,
-      stock: parseInt(form.stock) || 0,
-      active: true,
-      category: form.category || 'General',
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    setForm(EMPTY_FORM);
-    setImagePreview('');
-    setShowAddModal(false);
+
+    const priceNum = parseInt(form.price.replace(/\D/g, '')) || 0;
+    const stockNum = parseInt(form.stock) || 0;
+
+    try {
+      await api.post("/company/products", {
+        name: form.name,
+        price: priceNum,
+        images: form.imageUrl ? [form.imageUrl] : [],
+        discount_enable: false,
+        discount_value: 0,
+        stock: stockNum,
+        descripcion: [form.description, form.brand, form.model, form.warranty, form.weight, form.dimensions].filter(Boolean).join(" · ") || form.name,
+        catalog_name: form.category || undefined,
+      });
+      setForm(EMPTY_FORM);
+      setImagePreview('');
+      setShowAddModal(false);
+      await fetchDashboardData();
+    } catch (err) {
+      console.error("Error creating product:", err);
+    }
   };
 
   const openEditProfile = () => {
@@ -194,7 +347,7 @@ export default function SellerDashboard() {
       email: sellerInfo.email,
       phone: sellerInfo.phone,
     });
-    setShowEditProfileModal(true);
+    setShowProfileDrawer(true);
   };
 
   const handleUpdateProfile = async () => {
@@ -214,7 +367,7 @@ export default function SellerDashboard() {
         phone: profileForm.phone,
         avatar: profileForm.name.charAt(0).toUpperCase() || 'V',
       }));
-      setShowEditProfileModal(false);
+      setShowProfileDrawer(false);
     } catch (err) {
       console.error("Error updating profile:", err);
     }
@@ -222,9 +375,30 @@ export default function SellerDashboard() {
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'products', label: 'Mis Productos', icon: <CubeIcon className="w-4 h-4" /> },
+    { id: 'orders', label: 'Pedidos', icon: <ShoppingBagIcon className="w-4 h-4" /> },
     { id: 'stats', label: 'Estadísticas', icon: <ChartBarIcon className="w-4 h-4" /> },
     { id: 'profile', label: 'Mi Perfil', icon: <ShieldCheckIcon className="w-4 h-4" /> },
   ];
+
+  const getLevelColor = (level: string) => {
+    switch (level) {
+      case 'Diamond': return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300';
+      case 'Platinum': return 'bg-purple-500/20 border-purple-500/40 text-purple-300';
+      case 'Gold': return 'bg-yellow-500/20 border-yellow-500/40 text-yellow-300';
+      case 'Silver': return 'bg-gray-400/20 border-gray-400/40 text-gray-300';
+      default: return 'bg-orange-500/20 border-orange-500/40 text-orange-300';
+    }
+  };
+
+  const getLevelBarColor = (level: string) => {
+    switch (level) {
+      case 'Diamond': return 'from-cyan-400 to-cyan-600';
+      case 'Platinum': return 'from-purple-400 to-purple-600';
+      case 'Gold': return 'from-yellow-400 to-yellow-600';
+      case 'Silver': return 'from-gray-400 to-gray-600';
+      default: return 'from-orange-400 to-orange-600';
+    }
+  };
 
   if (loading) {
     return (
@@ -245,9 +419,10 @@ export default function SellerDashboard() {
               <div className="w-24 h-24 bg-slate-900 rounded-full flex items-center justify-center text-4xl font-bold text-green-500 shadow-lg border-4 border-white/20">
                 {sellerInfo.avatar}
               </div>
-              <button className="absolute bottom-0 right-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-400 transition-colors">
+              <label className="absolute bottom-0 right-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-400 transition-colors cursor-pointer">
                 <CameraIcon className="w-4 h-4 text-white" />
-              </button>
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              </label>
             </div>
             <div className="flex-1 text-center md:text-left">
               <div className="flex items-center gap-2 justify-center md:justify-start mb-1">
@@ -257,7 +432,7 @@ export default function SellerDashboard() {
               <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 text-green-100 mt-2">
                 <div className="flex items-center gap-1">
                   <StarIcon className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                  <span className="font-semibold">{sellerInfo.rating}</span>
+                  <span className="font-semibold">{sellerInfo.rating > 0 ? sellerInfo.rating : 'Sin calificación'}</span>
                   <span className="text-sm">({sellerInfo.totalReviews} reseñas)</span>
                 </div>
                 <div className="flex items-center gap-1">
@@ -268,7 +443,7 @@ export default function SellerDashboard() {
               </div>
             </div>
             <button 
-              onClick={openEditProfile}
+              onClick={() => setShowProfileDrawer(true)}
               className="flex items-center gap-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-4 py-2 rounded-lg transition-colors border border-white/20"
             >
               <PencilSquareIcon className="w-4 h-4" />
@@ -350,7 +525,7 @@ export default function SellerDashboard() {
                     </div>
 
                     <div className="p-4">
-                      <Link to={`/seller/product/${product.id}`} className="block mb-2">
+                      <Link to={`/producto/${product.id}`} className="block mb-2">
                         <h3 className="text-gray-200 font-semibold line-clamp-2 h-11 hover:text-green-400 transition-colors text-sm">
                           {product.name}
                         </h3>
@@ -406,6 +581,112 @@ export default function SellerDashboard() {
           </div>
         )}
 
+        {activeTab === 'orders' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Pedidos recibidos ({companyOrders.length})</h2>
+            {companyOrders.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <ShoppingBagIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p className="text-lg font-medium">No tienes pedidos aún</p>
+                <p className="text-sm mt-1">Los pedidos de tus productos aparecerán aquí</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {companyOrders.map((order) => (
+                  <div key={order.id} className="border border-slate-800 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setSelectedOrder(selectedOrder === order.id ? null : order.id)}
+                      className="w-full flex items-center gap-4 p-4 hover:bg-slate-800/60 transition-colors"
+                    >
+                      <div className="flex-1 text-left min-w-0">
+                        <div className="flex items-center gap-3">
+                          <p className="text-white font-bold text-sm truncate">{order.id.slice(0, 8)}...</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${orderStatusColor(order.status)}`}>
+                            {orderStatusLabel(order.status)}
+                          </span>
+                        </div>
+                        <p className="text-gray-500 text-xs mt-1">
+                          {order.buyer_name || order.buyer_email} · {new Date(order.created_at).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-green-400 font-bold">${order.total.toLocaleString("es-CO")}</p>
+                        <p className="text-gray-500 text-xs">{order.items.length} producto(s)</p>
+                      </div>
+                      <ChevronRightIcon className={`w-5 h-5 text-gray-400 transition-transform ${selectedOrder === order.id ? "rotate-90" : ""}`} />
+                    </button>
+
+                    {selectedOrder === order.id && (
+                      <div className="border-t border-slate-800 p-5 bg-slate-950/50 space-y-5">
+                        <div>
+                          <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Productos</h3>
+                          <div className="space-y-2">
+                            {order.items.map((item) => (
+                              <div key={item.id} className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-gray-500">
+                                  <CubeIcon className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white text-sm font-medium">{item.name}</p>
+                                  <p className="text-gray-500 text-xs">Cantidad: {item.quantity}</p>
+                                </div>
+                                <p className="text-white text-sm font-semibold">${(item.price * item.quantity).toLocaleString("es-CO")}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                          <div>
+                            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Resumen</h3>
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="text-white">${order.subtotal.toLocaleString("es-CO")}</span></div>
+                              <div className="flex justify-between"><span className="text-gray-500">Envío</span><span className="text-white">{order.shipping === 0 ? 'GRATIS' : `$${order.shipping.toLocaleString("es-CO")}`}</span></div>
+                              <div className="flex justify-between pt-2 border-t border-slate-800"><span className="text-gray-300 font-semibold">Total</span><span className="text-green-400 font-bold">${order.total.toLocaleString("es-CO")}</span></div>
+                            </div>
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-2">Envío y pago</h3>
+                            <div className="space-y-1 text-sm text-gray-400">
+                              <p>{order.recipient} · {order.address}, {order.city}</p>
+                              <p>Pago: {order.payment_method === "tarjeta" ? "Tarjeta" : order.payment_method === "pse" ? "PSE" : order.payment_method}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                          <div className="flex gap-2 pt-2 border-t border-slate-800">
+                            {order.status === 'pending' && (
+                              <>
+                                <button onClick={() => handleOrderStatus(order.id, 'confirmed')} className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-lg text-sm font-semibold transition">
+                                  Confirmar pedido
+                                </button>
+                                <button onClick={() => handleOrderStatus(order.id, 'cancelled')} className="px-4 py-2 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 rounded-lg text-sm font-semibold transition">
+                                  Rechazar
+                                </button>
+                              </>
+                            )}
+                            {order.status === 'confirmed' && (
+                              <button onClick={() => handleOrderStatus(order.id, 'shipped')} className="px-4 py-2 bg-purple-500 hover:bg-purple-400 text-white rounded-lg text-sm font-semibold transition">
+                                Marcar como enviado
+                              </button>
+                            )}
+                            {order.status === 'shipped' && (
+                              <button onClick={() => handleOrderStatus(order.id, 'delivered')} className="px-4 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg text-sm font-semibold transition">
+                                Marcar como entregado
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === 'stats' && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -413,7 +694,7 @@ export default function SellerDashboard() {
                 { label: 'Productos activos', value: activeProducts.length, icon: <CubeIcon className="w-5 h-5 text-green-400" /> },
                 { label: 'Ventas totales', value: products.reduce((a, p) => a + p.sold, 0), icon: <ArrowTrendingUpIcon className="w-5 h-5 text-blue-400" /> },
                 { label: 'Ingresos totales', value: `$${(totalRevenue / 1000000).toFixed(1)}M`, icon: <CurrencyDollarIcon className="w-5 h-5 text-yellow-400" /> },
-                { label: 'Calificación', value: sellerInfo.rating, icon: <StarIcon className="w-5 h-5 text-yellow-400 fill-yellow-400" /> },
+                { label: 'Calificación', value: sellerInfo.rating > 0 ? sellerInfo.rating : 'N/A', icon: <StarIcon className="w-5 h-5 text-yellow-400 fill-yellow-400" /> },
               ].map((stat) => (
                 <div key={stat.label} className="bg-slate-900 rounded-xl border border-slate-800 p-5">
                   <div className="flex items-center justify-between mb-3">
@@ -504,7 +785,7 @@ export default function SellerDashboard() {
                   <span className="text-gray-300">Calificación promedio</span>
                   <div className="flex items-center gap-1">
                     <StarIcon className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-white font-bold">{sellerInfo.rating}</span>
+                    <span className="text-white font-bold">{sellerInfo.rating > 0 ? sellerInfo.rating : 'N/A'}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
@@ -517,16 +798,16 @@ export default function SellerDashboard() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
                   <span className="text-gray-300">Nivel de vendedor</span>
-                  <span className="bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 text-xs px-3 py-1 rounded-full font-semibold">Platinum</span>
+                  <span className={`text-xs px-3 py-1 rounded-full font-semibold border ${getLevelColor(sellerInfo.sellerLevel)}`}>{sellerInfo.sellerLevel}</span>
                 </div>
               </div>
               <div className="mt-4 p-3 bg-slate-800 rounded-lg">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-gray-400 text-xs">Progreso nivel</span>
-                  <span className="text-gray-400 text-xs">78%</span>
+                  <span className="text-gray-400 text-xs">{sellerInfo.levelProgress}%</span>
                 </div>
                 <div className="w-full bg-slate-700 rounded-full h-2">
-                  <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 h-2 rounded-full" style={{ width: '78%' }} />
+                  <div className={`bg-gradient-to-r ${getLevelBarColor(sellerInfo.sellerLevel)} h-2 rounded-full transition-all duration-500`} style={{ width: `${sellerInfo.levelProgress}%` }} />
                 </div>
               </div>
             </div>
@@ -698,65 +979,102 @@ export default function SellerDashboard() {
         </div>
       )}
 
-      {showEditProfileModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+      {showProfileDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowProfileDrawer(false)} />
+          <div className="relative w-full max-w-md bg-slate-900 border-l border-slate-700 shadow-2xl overflow-y-auto animate-slide-in-right">
+            <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 p-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <PencilSquareIcon className="w-5 h-5 text-green-400" />
                 Editar perfil de tienda
               </h2>
               <button
-                onClick={() => setShowEditProfileModal(false)}
+                onClick={() => setShowProfileDrawer(false)}
                 className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Nombre de la tienda <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={profileForm.name}
-                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
-                  placeholder="TechStore"
-                />
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <CameraIcon className="w-4 h-4" /> Logo de la tienda
+                </h3>
+                <div className="flex items-center gap-4">
+                  <div className="w-20 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-bold text-green-500 border-2 border-dashed border-slate-700 overflow-hidden">
+                    {sellerInfo.avatar}
+                  </div>
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center justify-center gap-2 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-sm text-gray-300 transition-colors">
+                      <ArrowUpTrayIcon className="w-4 h-4" />
+                      Cambiar logo
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                  </label>
+                </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Correo electrónico
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <CameraIcon className="w-4 h-4" /> Banner de la tienda
+                </h3>
+                <label className="cursor-pointer block">
+                  <div className="flex items-center justify-center gap-2 py-6 bg-slate-800 hover:bg-slate-700 border-2 border-dashed border-slate-700 rounded-xl text-sm text-gray-300 transition-colors">
+                    <ArrowUpTrayIcon className="w-5 h-5" />
+                    Subir banner
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
                 </label>
-                <input
-                  type="email"
-                  value={profileForm.email}
-                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
-                  placeholder="tienda@correo.com"
-                />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">
-                  Teléfono de contacto
-                </label>
-                <input
-                  type="text"
-                  value={profileForm.phone}
-                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
-                  placeholder="+57 300 000 0000"
-                />
+              <div className="border-t border-slate-800 pt-6">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Información de la tienda</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                      Nombre de la tienda <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.name}
+                      onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                      placeholder="TechStore"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                      Correo electrónico
+                    </label>
+                    <input
+                      type="email"
+                      value={profileForm.email}
+                      onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                      placeholder="tienda@correo.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                      Teléfono de contacto
+                    </label>
+                    <input
+                      type="text"
+                      value={profileForm.phone}
+                      onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                      className="w-full bg-slate-800 border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-green-500 transition-colors"
+                      placeholder="+57 300 000 0000"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-2 pb-4">
                 <button
-                  onClick={() => setShowEditProfileModal(false)}
+                  onClick={() => setShowProfileDrawer(false)}
                   className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-xl font-medium transition-colors border border-slate-700"
                 >
                   Cancelar
@@ -766,7 +1084,7 @@ export default function SellerDashboard() {
                   disabled={!profileForm.name.trim()}
                   className="flex-1 py-2.5 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all shadow-lg shadow-green-500/30"
                 >
-                  Guardar
+                  Guardar cambios
                 </button>
               </div>
             </div>

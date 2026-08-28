@@ -110,13 +110,6 @@ export default function NavbarEmpresa() {
                 >
                   Perfil de Empresa
                 </Link>
-                <Link
-                  to="/dashboard-empresa"
-                  className="block px-4 py-2 text-white hover:bg-green-500 transition"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Configuración
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="block w-full text-left px-4 py-2 text-white hover:bg-red-500 transition"

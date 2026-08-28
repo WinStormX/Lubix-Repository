@@ -15,6 +15,7 @@ import Productos from "./pages/productos";
 import CartPage from "./pages/carrito";
 import PagarPage from "./pages/pagar";
 import DashboardAdmin from "./pages/dashboardadmin"; // Importa el componente DashboardAdmin
+import ProductoDetalle from "./pages/producto-detalle";
 
 
 function App() {
@@ -33,6 +34,7 @@ function App() {
       <Route path="/carrito" element={<CartPage/>} />
       <Route path="/pago" element={<PagarPage />} />
       <Route path="/buscar" element={<BuscarProducto/>} />
+      <Route path="/producto/:id" element={<ProductoDetalle />} />
       <Route path="/productos" element={<Productos/>} />
       <Route path="/dashboard-admin" element={<DashboardAdmin />} /> {/* Ruta para el DashboardAdmin */}
     </Routes>

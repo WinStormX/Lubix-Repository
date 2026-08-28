@@ -1,213 +1,378 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NavbarAdmin from '../components/navbar-admin';
+import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
-
-// 1. INTERFACES DE TYPESCRIPT
-
-interface KpiMetric {
-  title: string;
-  value: number;
-  change: string;
-  isPositive: boolean;
-  type: 'currency' | 'number' | 'percentage';
+interface CompanyItem {
+  id: string;
+  userId: string;
+  nameCompany: string;
+  nit: string;
+  nitDV: string;
+  addressCompany: string;
+  email: string;
+  ownerName: string;
+  ownerTell: string;
+  verified: boolean;
+  isActive: boolean;
+  certificate: string | null;
+  memberSince: string;
 }
 
-interface LogActividad {
-  id: number;
-  usuario: string;
-  accion: string;
-  modulo: string;
-  hora: string;
-  estado: 'completado' | 'pendiente' | 'alerta';
+interface UserItem {
+  id: string;
+  fullName: string;
+  email: string;
+  tell: string;
+  role: string | null;
+  verified: boolean;
+  isActive: boolean;
+  memberSince: string;
 }
 
-interface IngresoMes {
-  mes: string;
-  valor: number; 
-}
+type Tab = 'resumen' | 'empresas' | 'usuarios';
 
-
-// 2. DATOS SIMULADOS PARA EL DASHBOARD
-
-const METRICAS_GENERALES: KpiMetric[] = [
-  { title: "Ingresos Totales", value: 945106300, change: "+12.4%", isPositive: true, type: 'currency' },
-  { title: "Gastos Operativos", value: 312450000, change: "-3.2%", isPositive: true, type: 'currency' },
-  { title: "Margen de Ganancia", value: 66.9, change: "+2.1%", isPositive: true, type: 'percentage' },
-  { title: "Nuevos Clientes", value: 1240, change: "+18.5%", isPositive: true, type: 'number' }
-];
-
-const RECIENTES_LOGS: LogActividad[] = [
-  { id: 1, usuario: "Carlos Mendoza", accion: "Actualizó stock de Laptop Pro 15\"", modulo: "Inventario", hora: "Hace 5 min", estado: "completado" },
-  { id: 2, usuario: "Sistema Automático", accion: "Copia de seguridad realizada con éxito", modulo: "Base de Datos", hora: "Hace 1 hora", estado: "completado" },
-  { id: 3, usuario: "Ana María Silva", accion: "Reportó error en pasarela de pagos", modulo: "Ventas", hora: "Hace 3 horas", estado: "alerta" },
-  { id: 4, usuario: "Sergio T.", accion: "Modificó permisos del rol Administrador", modulo: "Usuarios", hora: "Ayer", estado: "pendiente" }
-];
-
-const HISTORIAL_INGRESOS: IngresoMes[] = [
-  { mes: "Ene", valor: 140 },
-  { mes: "Feb", valor: 198 },
-  { mes: "Mar", valor: 220 },
-  { mes: "Abr", valor: 285 },
-  { mes: "May", valor: 310 },
-  { mes: "Jun", valor: 392 }
-];
-
-// Helper para formatear en COP sin decimales
-const formatCOP = (valor: number) => {
-  return valor.toLocaleString('es-CO', {
-    style: 'currency',
-    currency: 'COP',
-    maximumFractionDigits: 0
-  });
-};
-
-// Valor tope referencial para calcular la altura de las barras de la gráfica
-const VALOR_MAXIMO_GRAFICA = 400;
-
-// ==========================================
-// 3. COMPONENTE PRINCIPAL DEL DASHBOARD
-// ==========================================
 export default function DashboardAdminPage() {
-  const [filtroModulo, setFiltroModulo] = useState<string>("Todos");
+  const { user } = useAuth();
+  const [tab, setTab] = useState<Tab>('resumen');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const logsFiltrados = filtroModulo === "Todos" 
-    ? RECIENTES_LOGS 
-    : RECIENTES_LOGS.filter(log => log.modulo === filtroModulo);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    totalCompanies: 0,
+    pendingCompanies: 0,
+    activeUsers: 0,
+    inactiveUsers: 0,
+  });
+  const [companies, setCompanies] = useState<CompanyItem[]>([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const reloadData = () =>
+    Promise.all([
+      api.get("/admin/dashboard/me"),
+      api.get("/admin/companies"),
+      api.get("/admin/users"),
+    ]);
+
+  const applyData = (s: typeof stats, c: CompanyItem[], u: UserItem[]) => {
+    setStats(s);
+    setCompanies(c);
+    setUsers(u);
+  };
+
+  useEffect(() => {
+    reloadData()
+      .then(([statsRes, companiesRes, usersRes]) => {
+        applyData(statsRes.data, companiesRes.data, usersRes.data);
+      })
+      .catch((err) => {
+        console.error("Error fetching admin data:", err);
+        setError("No se pudieron cargar los datos del panel de administración.");
+      })
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleValidate = async (company: CompanyItem) => {
+    setValidatingId(company.id);
+    try {
+      await api.patch(`/admin/companies/${company.id}/validate`);
+      const [statsRes, companiesRes, usersRes] = await reloadData();
+      applyData(statsRes.data, companiesRes.data, usersRes.data);
+    } catch (err) {
+      console.error("Error validating company:", err);
+      setError("No se pudo validar la empresa.");
+    } finally {
+      setValidatingId(null);
+    }
+  };
+
+  const handleDeleteUser = async (user: UserItem) => {
+    const confirmed = window.confirm(
+      `¿Eliminar al usuario "${user.fullName}" (${user.email})?\n\nEsta acción no se puede deshacer. Se eliminarán también sus direcciones, pedidos y tokens asociados.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(user.id);
+    try {
+      await api.delete(`/admin/users/${user.id}`);
+      const [statsRes, companiesRes, usersRes] = await reloadData();
+      applyData(statsRes.data, companiesRes.data, usersRes.data);
+    } catch (err) {
+      console.error("Error deleting user:", err);
+      setError("No se pudo eliminar el usuario.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const pendingCompanies = companies.filter((c) => !c.verified);
+
+  const kpis = [
+    { title: "Usuarios registrados", value: stats.totalUsers, icon: "👤" },
+    { title: "Empresas registradas", value: stats.totalCompanies, icon: "🏢" },
+    { title: "Empresas por validar", value: stats.pendingCompanies, icon: "⏳" },
+    { title: "Cuentas activas", value: stats.activeUsers, icon: "✅" },
+  ];
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'resumen', label: 'Resumen' },
+    { id: 'empresas', label: `Empresas (${companies.length})` },
+    { id: 'usuarios', label: `Usuarios (${users.length})` },
+  ];
+
+  if (loading) {
+    return (
+      <div className="bg-[#030712] min-h-screen text-slate-100 flex flex-col font-sans">
+        <NavbarAdmin />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#030712] min-h-screen text-slate-100 flex flex-col font-sans">
-      {/* Navbar de Administración Unificado */}
       <NavbarAdmin />
 
-      {/* Contenido Principal */}
       <main className="p-6 flex-1 max-w-7xl w-full mx-auto space-y-6">
-        
-        {/* Encabezado Principal */}
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Panel de Administración General</h1>
-          <p className="text-sm text-slate-400 mt-1">Monitoreo global de operaciones, finanzas y registros del sistema.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Panel de Administración</h1>
+            <p className="text-sm text-slate-400 mt-1">Gestión de usuarios y empresas registradas en el sistema.</p>
+          </div>
+          <span className="text-sm text-slate-400">
+            {user?.name ? `Sesión: ${user.name}` : ""}
+          </span>
         </div>
 
-        {/* Rejilla de Indicadores Clave (KPIs) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {METRICAS_GENERALES.map((kpi, idx) => (
-            <div key={idx} className="bg-[#1f2937] p-5 rounded-xl border border-slate-700/70 shadow-md">
-              <span className="text-xs text-slate-400 block uppercase font-mono tracking-wider">{kpi.title}</span>
-              <div className="flex items-baseline justify-between mt-2">
-                <span className="text-xl font-bold text-white tracking-tight">
-                  {kpi.type === 'currency' 
-                    ? formatCOP(kpi.value) 
-                    : kpi.type === 'percentage' 
-                      ? `${kpi.value}%` 
-                      : kpi.value.toLocaleString('es-CO')
-                  }
-                </span>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                  kpi.isPositive 
-                    ? 'bg-green-950/60 text-green-400 border border-green-900/40' 
-                    : 'bg-rose-950/60 text-rose-400 border border-rose-900/40'
-                }`}>
-                  {kpi.change}
-                </span>
-              </div>
-            </div>
+        {error && (
+          <div className="bg-rose-950/60 border border-rose-900/50 text-rose-300 text-sm px-4 py-3 rounded-xl">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium whitespace-nowrap transition-all ${
+                tab === t.id
+                  ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
+                  : 'bg-slate-800 text-gray-400 hover:text-gray-200 hover:bg-slate-700'
+              }`}
+            >
+              {t.label}
+            </button>
           ))}
         </div>
 
-        {/* Sección de Gráficos y Auditoría (Dos Columnas) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* COLUMNA IZQUIERDA: Gráfica Financiera (Ocupa 2 columnas de ancho) */}
-          <div className="bg-[#1f2937] p-6 rounded-xl border border-slate-700/70 shadow-md lg:col-span-2 flex flex-col justify-between">
-            <div className="mb-6">
-              <h3 className="text-base font-bold text-white tracking-tight">Tendencia de Ingresos Mensuales</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Expresado en millones de pesos ($M COP).</p>
-            </div>
-            
-            {/* Contenedor del Área de Barras con altura explícita (h-48) para cálculo en React */}
-            <div className="flex items-end justify-between h-48 pt-6 px-4 border-b border-l border-slate-600 relative">
-              {HISTORIAL_INGRESOS.map((item, index) => {
-                // Cálculo porcentual exacto respecto al máximo definido
-                const alturaPorcentaje = (item.valor / VALOR_MAXIMO_GRAFICA) * 100;
-
-                return (
-                  <div key={index} className="flex flex-col items-center w-1/6 group relative z-10">
-                    {/* Tooltip flotante al hacer Hover */}
-                    <span className="text-[11px] font-mono font-bold text-green-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-7">
-                      ${item.valor}M
+        {tab === 'resumen' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {kpis.map((kpi, idx) => (
+                <div key={idx} className="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow-md">
+                  <span className="text-xs text-slate-400 block uppercase font-mono tracking-wider">{kpi.title}</span>
+                  <div className="flex items-baseline justify-between mt-2">
+                    <span className="text-2xl font-bold text-white tracking-tight">
+                      {kpi.value.toLocaleString('es-CO')}
                     </span>
-                    
-                    {/* Barra Geométrica Verde Pintada */}
-                    <div 
-                      style={{ height: `${alturaPorcentaje}%` }} 
-                      className="w-full max-w-[36px] bg-green-500 rounded-t shadow-[0_0_12px_rgba(34,197,94,0.15)] group-hover:bg-green-400 group-hover:shadow-[0_0_16px_rgba(34,197,94,0.35)] transition-all duration-300 cursor-pointer"
-                    />
-                    
-                    {/* Nombre del Mes */}
-                    <span className="text-xs text-slate-400 mt-2 font-medium">
-                      {item.mes}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* COLUMNA DERECHA: Auditoría del Sistema (Ocupa 1 columna de ancho) */}
-          <div className="bg-[#1f2937] p-6 rounded-xl border border-slate-700/70 shadow-md flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight">Auditoría del Sistema</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Acciones recientes de usuarios.</p>
-              </div>
-              
-              {/* Filtro por Módulo */}
-              <select 
-                value={filtroModulo} 
-                onChange={(e) => setFiltroModulo(e.target.value)}
-                className="bg-[#030712] text-xs text-slate-300 border border-slate-600 rounded-md py-1.5 px-2.5 focus:outline-none focus:ring-1 focus:ring-green-500 transition cursor-pointer"
-              >
-                <option value="Todos">Todos</option>
-                <option value="Inventario">Inventario</option>
-                <option value="Base de Datos">Base de Datos</option>
-                <option value="Ventas">Ventas</option>
-                <option value="Usuarios">Usuarios</option>
-              </select>
-            </div>
-
-            {/* Lista con Scroll Interno para los Eventos */}
-            <div className="space-y-3 h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700">
-              {logsFiltrados.map((log) => (
-                <div key={log.id} className="p-3 bg-[#030712] rounded-lg border border-slate-700/50 text-xs flex justify-between items-start">
-                  <div className="space-y-1">
-                    <span className="font-semibold text-slate-200 block">{log.usuario}</span>
-                    <p className="text-slate-400 font-sans line-clamp-1">{log.accion}</p>
-                    <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded font-mono uppercase tracking-wider font-semibold">
-                      {log.modulo}
-                    </span>
-                  </div>
-                  <div className="text-right flex flex-col items-end justify-between h-full min-h-[42px] ml-2">
-                    <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">{log.hora}</span>
-                    <span className={`w-2 h-2 rounded-full mt-1.5 ${
-                      log.estado === 'completado' 
-                        ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' 
-                        : log.estado === 'pendiente' 
-                          ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.4)]' 
-                          : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
-                    }`} title={log.estado}></span>
+                    <span className="text-lg">{kpi.icon}</span>
                   </div>
                 </div>
               ))}
+            </div>
 
-              {logsFiltrados.length === 0 && (
-                <div className="flex items-center justify-center h-full text-center text-slate-500 text-xs py-4">
-                  No hay registros en este módulo.
+            <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Empresas por validar ({pendingCompanies.length})</h2>
+                <button
+                  onClick={() => setTab('empresas')}
+                  className="text-sm text-green-400 hover:text-green-300 transition"
+                >
+                  Ver todas
+                </button>
+              </div>
+
+              {pendingCompanies.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <span className="block text-3xl mb-2">✅</span>
+                  <p className="font-medium">No hay empresas pendientes de validación</p>
+                  <p className="text-sm mt-1">Cuando una empresa se registre, aparecerá aquí para que la valides.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingCompanies.map((company) => (
+                    <div
+                      key={company.id}
+                      className="flex flex-col md:flex-row md:items-center gap-4 p-4 bg-slate-800/60 rounded-xl border border-slate-700"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white truncate">{company.nameCompany}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                            Pendiente
+                          </span>
+                        </div>
+                        <p className="text-gray-400 text-sm truncate mt-1">{company.email}</p>
+                        <p className="text-gray-500 text-xs mt-1">NIT: {company.nit}-{company.nitDV} · {company.addressCompany}</p>
+                      </div>
+                      <button
+                        onClick={() => handleValidate(company)}
+                        disabled={validatingId === company.id}
+                        className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-green-500 hover:bg-green-400 text-white font-semibold text-sm transition disabled:opacity-50"
+                      >
+                        {validatingId === company.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            Validando...
+                          </>
+                        ) : (
+                          "Validar empresa"
+                        )}
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
+        )}
 
-        </div>
+        {tab === 'empresas' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Empresas registradas ({companies.length})</h2>
+
+            {companies.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <span className="block text-3xl mb-2">🏢</span>
+                <p className="text-lg font-medium">No hay empresas registradas</p>
+                <p className="text-sm mt-1">Las empresas que se registren aparecerán aquí.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-gray-400 text-xs uppercase tracking-wider">
+                      <th className="py-3 pr-4">Empresa</th>
+                      <th className="py-3 pr-4">NIT</th>
+                      <th className="py-3 pr-4">Contacto</th>
+                      <th className="py-3 pr-4">Registro</th>
+                      <th className="py-3">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {companies.map((company) => (
+                      <tr key={company.id} className="border-b border-slate-800 last:border-0">
+                        <td className="py-3 pr-4">
+                          <p className="text-white font-medium">{company.nameCompany}</p>
+                          <p className="text-gray-500 text-xs">{company.addressCompany}</p>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-300">{company.nit}-{company.nitDV}</td>
+                        <td className="py-3 pr-4">
+                          <p className="text-gray-300">{company.email}</p>
+                          <p className="text-gray-500 text-xs">{company.ownerName} · {company.ownerTell}</p>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-400">
+                          {new Date(company.memberSince).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="py-3">
+                          {company.verified ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 whitespace-nowrap">
+                              Validada
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                              Pendiente
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'usuarios' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Usuarios registrados ({users.length})</h2>
+
+            {users.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <span className="block text-3xl mb-2">👤</span>
+                <p className="text-lg font-medium">No hay usuarios registrados</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-gray-400 text-xs uppercase tracking-wider">
+                      <th className="py-3 pr-4">Usuario</th>
+                      <th className="py-3 pr-4">Email</th>
+                      <th className="py-3 pr-4">Teléfono</th>
+                      <th className="py-3 pr-4">Rol</th>
+                      <th className="py-3 pr-4">Registro</th>
+                      <th className="py-3 pr-4">Estado</th>
+                      <th className="py-3">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="border-b border-slate-800 last:border-0">
+                        <td className="py-3 pr-4 text-white font-medium">{u.fullName}</td>
+                        <td className="py-3 pr-4 text-gray-300">{u.email}</td>
+                        <td className="py-3 pr-4 text-gray-400">{u.tell}</td>
+                        <td className="py-3 pr-4">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 capitalize">
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4 text-gray-400">
+                          {new Date(u.memberSince).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" })}
+                        </td>
+                        <td className="py-3">
+                          {u.verified ? (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 whitespace-nowrap">
+                              Activo
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">
+                              Sin verificar
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <button
+                            onClick={() => handleDeleteUser(u)}
+                            disabled={deletingId === u.id}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {deletingId === u.id ? (
+                              <span className="flex items-center gap-1.5">
+                                <div className="w-3 h-3 border-2 border-rose-400/30 border-t-rose-400 rounded-full animate-spin"></div>
+                                Eliminando...
+                              </span>
+                            ) : (
+                              "Eliminar"
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
