@@ -30,7 +30,19 @@ interface UserItem {
   memberSince: string;
 }
 
-type Tab = 'resumen' | 'empresas' | 'usuarios';
+interface PQRSItem {
+  id: string;
+  type: string;
+  subject: string;
+  description: string;
+  status: string;
+  user_role: string;
+  user_name: string;
+  user_email: string;
+  created_at: string;
+}
+
+type Tab = 'resumen' | 'empresas' | 'usuarios' | 'pqrs';
 
 export default function DashboardAdminPage() {
   const { user } = useAuth();
@@ -47,26 +59,30 @@ export default function DashboardAdminPage() {
   });
   const [companies, setCompanies] = useState<CompanyItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [pqrsList, setPqrsList] = useState<PQRSItem[]>([]);
   const [validatingId, setValidatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const reloadData = () =>
     Promise.all([
       api.get("/admin/dashboard/me"),
       api.get("/admin/companies"),
       api.get("/admin/users"),
+      api.get("/admin/pqrs"),
     ]);
 
-  const applyData = (s: typeof stats, c: CompanyItem[], u: UserItem[]) => {
+  const applyData = (s: typeof stats, c: CompanyItem[], u: UserItem[], p: PQRSItem[]) => {
     setStats(s);
     setCompanies(c);
     setUsers(u);
+    setPqrsList(p);
   };
 
   useEffect(() => {
     reloadData()
-      .then(([statsRes, companiesRes, usersRes]) => {
-        applyData(statsRes.data, companiesRes.data, usersRes.data);
+      .then(([statsRes, companiesRes, usersRes, pqrsRes]) => {
+        applyData(statsRes.data, companiesRes.data, usersRes.data, pqrsRes.data);
       })
       .catch((err) => {
         console.error("Error fetching admin data:", err);
@@ -80,8 +96,8 @@ export default function DashboardAdminPage() {
     setValidatingId(company.id);
     try {
       await api.patch(`/admin/companies/${company.id}/validate`);
-      const [statsRes, companiesRes, usersRes] = await reloadData();
-      applyData(statsRes.data, companiesRes.data, usersRes.data);
+      const [statsRes, companiesRes, usersRes, pqrsRes] = await reloadData();
+      applyData(statsRes.data, companiesRes.data, usersRes.data, pqrsRes.data);
     } catch (err) {
       console.error("Error validating company:", err);
       setError("No se pudo validar la empresa.");
@@ -99,13 +115,27 @@ export default function DashboardAdminPage() {
     setDeletingId(user.id);
     try {
       await api.delete(`/admin/users/${user.id}`);
-      const [statsRes, companiesRes, usersRes] = await reloadData();
-      applyData(statsRes.data, companiesRes.data, usersRes.data);
+      const [statsRes, companiesRes, usersRes, pqrsRes] = await reloadData();
+      applyData(statsRes.data, companiesRes.data, usersRes.data, pqrsRes.data);
     } catch (err) {
       console.error("Error deleting user:", err);
       setError("No se pudo eliminar el usuario.");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleResolvePQRS = async (pqrsId: string) => {
+    setResolvingId(pqrsId);
+    try {
+      await api.patch(`/admin/pqrs/${pqrsId}/status`);
+      const [statsRes, companiesRes, usersRes, pqrsRes] = await reloadData();
+      applyData(statsRes.data, companiesRes.data, usersRes.data, pqrsRes.data);
+    } catch (err) {
+      console.error("Error resolving PQRS:", err);
+      setError("No se pudo marcar la PQRS como resuelta.");
+    } finally {
+      setResolvingId(null);
     }
   };
 
@@ -122,6 +152,7 @@ export default function DashboardAdminPage() {
     { id: 'resumen', label: 'Resumen' },
     { id: 'empresas', label: `Empresas (${companies.length})` },
     { id: 'usuarios', label: `Usuarios (${users.length})` },
+    { id: 'pqrs', label: `PQRS (${pqrsList.length})` },
   ];
 
   if (loading) {
@@ -369,6 +400,85 @@ export default function DashboardAdminPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'pqrs' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">PQRS recibidas ({pqrsList.length})</h2>
+
+            {pqrsList.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <span className="block text-3xl mb-2">📋</span>
+                <p className="text-lg font-medium">No hay PQRS registradas</p>
+                <p className="text-sm mt-1">Las peticiones, quejas, reclamos y sugerencias aparecerán aquí.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {pqrsList.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`border rounded-xl p-4 transition-colors ${
+                      item.status === 'resolved'
+                        ? 'border-green-500/30 bg-green-500/5'
+                        : 'border-slate-700 hover:border-slate-600'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                            item.type === 'peticion' ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' :
+                            item.type === 'queja' ? 'bg-red-500/10 border-red-500/30 text-red-400' :
+                            item.type === 'reclamo' ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' :
+                            item.type === 'sugerencia' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' :
+                            'bg-gray-500/10 border-gray-500/30 text-gray-400'
+                          }`}>
+                            {item.type === 'peticion' ? 'Petición' :
+                             item.type === 'queja' ? 'Queja' :
+                             item.type === 'reclamo' ? 'Reclamo' :
+                             item.type === 'sugerencia' ? 'Sugerencia' :
+                             item.type === 'eliminacion' ? 'Eliminación' : item.type}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                            item.status === 'pending'
+                              ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                              : 'bg-green-500/10 border-green-500/30 text-green-400'
+                          }`}>
+                            {item.status === 'pending' ? 'Pendiente' : 'Resuelta'}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-gray-300 border border-slate-600 capitalize">
+                            {item.user_role === 'empresa' ? 'Empresa' : 'Usuario'}
+                          </span>
+                        </div>
+                        <h3 className="text-white font-semibold text-sm mb-1">{item.subject}</h3>
+                        <p className="text-gray-400 text-xs mb-2 line-clamp-2">{item.description}</p>
+                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                          <span>{item.user_name} ({item.user_email})</span>
+                          <span>{new Date(item.created_at).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}</span>
+                        </div>
+                      </div>
+                      {item.status === 'pending' && (
+                        <button
+                          onClick={() => handleResolvePQRS(item.id)}
+                          disabled={resolvingId === item.id}
+                          className="flex items-center gap-1.5 px-3 py-2 bg-green-500 hover:bg-green-400 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {resolvingId === item.id ? (
+                            <>
+                              <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                              Resolviendo...
+                            </>
+                          ) : (
+                            'Marcar resuelta'
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
