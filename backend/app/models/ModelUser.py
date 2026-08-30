@@ -98,3 +98,9 @@ class Users(Base):
         cascade="all, delete-orphan"
     )
 
+    pqrs: Mapped[list["PQRS"]] = relationship(
+        "PQRS",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+

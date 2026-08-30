@@ -8,6 +8,7 @@ from app.routers import UserRouter
 from app.routers import AdminRouter
 from app.routers import ProductsRouter
 from app.routers import FavoritesRouter
+from app.routers import PQRSRouter
 import app.models
 from app.middleware.AuthMiddleware import auth_middleware
 from app.middleware.CorsMiddleware import setup_cors
@@ -35,5 +36,6 @@ app.include_router(UserRouter.router)
 app.include_router(AdminRouter.router)
 app.include_router(ProductsRouter.router)
 app.include_router(FavoritesRouter.router)
+app.include_router(PQRSRouter.router)
 
 

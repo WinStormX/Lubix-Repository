@@ -30,7 +30,8 @@ ROLES_PERMISSIONS_ROUTERS = {
 
     "admin": [
         "",
-        "/"
+        "/",
+        "/admin/pqrs"
     ],
 
     "company": [
@@ -40,7 +41,8 @@ ROLES_PERMISSIONS_ROUTERS = {
         "/company/dashboard/upload-logo",
         "/company/dashboard/upload-banner",
         "/company/products",
-        "/company/orders"
+        "/company/orders",
+        "/pqrs"
     ],
 
     "user": [
@@ -51,7 +53,8 @@ ROLES_PERMISSIONS_ROUTERS = {
         "/user/export",
         "/user/addresses",
         "/user/orders",
-        "/user/favorites"
+        "/user/favorites",
+        "/pqrs"
     ]
     
 }

@@ -10,3 +10,4 @@ from .ModelAddress import Address
 from .ModelOrder import Order, OrderItem
 from .ModelReview import Review
 from .ModelFavorite import Favorite
+from .ModelPQRS import PQRS
