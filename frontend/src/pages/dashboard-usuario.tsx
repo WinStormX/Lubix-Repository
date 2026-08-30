@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/navbaruser';
 import { useAuth } from '../context/AuthContext';
 import api from '../api/axios';
@@ -25,11 +26,13 @@ import {
   PencilSquareIcon,
   TruckIcon,
   CreditCardIcon,
-  XMarkIcon
+  XMarkIcon,
+  CheckCircleIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 
-type Tab = 'overview' | 'orders' | 'saved' | 'profile';
+type Tab = 'overview' | 'orders' | 'saved' | 'profile' | 'integrated' | 'delete-product';
 
 interface OrderItem {
   id: string;
@@ -58,6 +61,7 @@ interface Order {
 
 export default function BuyerDashboard() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
   const [userData, setUserData] = useState({
@@ -250,15 +254,7 @@ export default function BuyerDashboard() {
   };
 
   const deleteAccount = async () => {
-    if (!window.confirm("¿Estás seguro de que quieres eliminar tu cuenta? Esta acción no se puede deshacer.")) return;
-    try {
-      await api.delete("/user/account");
-      logout();
-      window.location.href = "/";
-    } catch (err) {
-      console.error("Error deleting account:", err);
-      alert("No se pudo eliminar la cuenta");
-    }
+    navigate('/pqrs?type=eliminacion&subject=Solicitud de eliminación de cuenta');
   };
 
   const fetchUserData = async () => {
@@ -317,6 +313,8 @@ export default function BuyerDashboard() {
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Resumen', icon: <UserIcon className="w-4 h-4" /> },
     { id: 'orders', label: 'Mis Pedidos', icon: <CubeIcon className="w-4 h-4" /> },
+    { id: 'integrated', label: 'Producto Integrado', icon: <CheckCircleIcon className="w-4 h-4" /> },
+    { id: 'delete-product', label: 'Eliminar Producto', icon: <TrashIcon className="w-4 h-4" /> },
     { id: 'saved', label: 'Guardados', icon: <HeartIcon className="w-4 h-4" /> },
     { id: 'profile', label: 'Mi Perfil', icon: <ShieldCheckIcon className="w-4 h-4" /> },
   ];
@@ -645,6 +643,93 @@ export default function BuyerDashboard() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'integrated' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Productos Integrados</h2>
+            {orders.filter(o => o.estado === 'delivered').length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <CheckCircleIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p className="text-lg font-medium">No tienes productos integrados aún</p>
+                <p className="text-sm mt-1">Los productos de pedidos entregados aparecerán aquí</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.filter(o => o.estado === 'delivered').map((order) => (
+                  <div key={order.id} className="border border-green-500/30 rounded-xl p-4 bg-green-500/5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                      <span className="text-green-400 font-semibold text-sm">Producto entregado e integrado</span>
+                      <span className="text-gray-500 text-xs ml-auto">
+                        {new Date(order.fecha).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex items-center gap-3 bg-slate-800 rounded-lg p-3">
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} className="w-10 h-10 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-slate-700 flex items-center justify-center">
+                              <CubeIcon className="w-4 h-4 text-gray-500" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-medium truncate">{item.name}</p>
+                            <p className="text-gray-500 text-xs">Cantidad: {item.quantity}</p>
+                          </div>
+                          <p className="text-green-400 text-sm font-semibold">${(item.price * item.quantity).toLocaleString("es-CO")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'delete-product' && (
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6">
+            <h2 className="text-xl font-bold text-white mb-6">Eliminar Producto</h2>
+            <p className="text-gray-400 text-sm mb-6">Selecciona un producto de tus pedidos para solicitar su eliminación o reportar un problema.</p>
+            {orders.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">
+                <TrashIcon className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                <p className="text-lg font-medium">No tienes productos en pedidos</p>
+                <p className="text-sm mt-1">Realiza una compra para poder gestionar tus productos</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {orders.map((order) =>
+                  order.items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-4 p-4 bg-slate-800 rounded-xl border border-slate-700 hover:border-red-500/30 transition-colors">
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} className="w-12 h-12 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-slate-700 flex items-center justify-center">
+                          <CubeIcon className="w-5 h-5 text-gray-500" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-gray-500 text-xs">Pedido: {order.id.slice(0, 8)}... · {estadoLabel(order.estado)}</p>
+                      </div>
+                      <p className="text-white text-sm font-semibold mr-3">${item.price.toLocaleString("es-CO")}</p>
+                      <button
+                        onClick={() => navigate(`/pqrs?type=queja&subject=Problema con producto: ${item.name}`)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 rounded-lg text-xs font-semibold transition-all"
+                      >
+                        <TrashIcon className="w-3.5 h-3.5" />
+                        Reportar
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
