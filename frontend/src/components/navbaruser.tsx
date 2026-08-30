@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import { UserCircleIcon, ShoppingCartIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { UserCircleIcon, ShoppingCartIcon, MagnifyingGlassIcon, ChatBubbleLeftEllipsisIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect } from "react";
 
 function getCart() {
@@ -102,6 +102,11 @@ export default function NavbarUsuario() {
               {cartCount}
             </span>
           )}
+        </Link>
+
+        <Link to="/pqrs" className="flex items-center gap-1 hover:text-green-400 transition">
+          <ChatBubbleLeftEllipsisIcon className="w-5 h-5" />
+          <span>PQRS</span>
         </Link>
 
         {user && (
