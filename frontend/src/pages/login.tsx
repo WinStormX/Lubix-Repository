@@ -53,6 +53,19 @@ const Login: React.FC = () => {
 
       // Interfaz de Usuario
       const mappedRole = data.role === "company" ? "empresa" : data.role === "admin" ? "admin" : "user";
+
+      // Validar que el rol coincida con la selección del usuario
+      if (userType === "user" && mappedRole === "empresa") {
+        showMessage("Esta cuenta es de tipo empresa. Selecciona 'Empresa' para iniciar sesión.", "error");
+        setLoading(false);
+        return;
+      }
+      if (userType === "company" && mappedRole === "user") {
+        showMessage("Esta cuenta es de tipo usuario. Selecciona 'Usuario' para iniciar sesión.", "error");
+        setLoading(false);
+        return;
+      }
+
       login(data.access_token, {
         id: data.id, 
         name: data.Nombre,
